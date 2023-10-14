@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <fcntl.h>
 #include <stdio.h> // TODO will be unused
 #include <stdlib.h>
@@ -34,8 +35,26 @@ type EV_KEY
 // https://www.kernel.org/doc/html/latest/input/input.html
 // https://docs.kernel.org/input/uinput.html
 
+const int keys[] = {
+	BTN_NORTH,
+	BTN_SOUTH,
+	BTN_EAST,
+	BTN_WEST,
+	BTN_TR,
+};
+
+const int abss[] = {
+	ABS_HAT0X,
+	ABS_HAT0Y,
+};
+
+#define NAME "nh-virtual-controller"
+#define VENDOR 0x4E48
+#define PRODUCT 0x6365
+
 static volatile sig_atomic_t stop = 0;
 static void interrupt_handler(int sig) {
+	(void) sig;
 	stop = 1;
 }
 
@@ -59,10 +78,6 @@ void emit(int fd, int type, int code, int val) {
 	} while (total < (ssize_t) sizeof ie);
 }
 
-#define NAME "ptestdev"
-
-#define VENDOR 0x4E48
-#define PRODUCT 0x6365
 
 int main() {
 	struct sigaction sa;
@@ -85,23 +100,45 @@ int main() {
 	usetup.id.bustype = BUS_USB;
 	usetup.id.vendor = VENDOR;
 	usetup.id.product = PRODUCT;
+	static_assert(sizeof NAME <= sizeof usetup.name);
 	memcpy(&usetup.name, NAME, sizeof NAME);
 
 	int err;
 	if (
 		(err = ioctl(fd, UI_SET_EVBIT, EV_KEY))
-		|| (err = ioctl(fd, UI_SET_KEYBIT, KEY_SPACE))
-		|| (err = ioctl(fd, UI_DEV_SETUP, &usetup))
+		|| (err = ioctl(fd, UI_SET_EVBIT, EV_ABS))
+	) {
+		printf("failed to set evbits\n");
+		return err;
+	}
+	for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) {
+		err = ioctl(fd, UI_SET_KEYBIT, keys[i]);
+		if (err) {
+			printf("failed to set keys\n");
+			return err;
+		}
+	}
+	for (size_t i = 0; i < sizeof abss / sizeof *abss; i++) {
+		err = ioctl(fd, UI_SET_ABSBIT, abss[i]);
+		if (err) {
+			printf("failed to set abss\n");
+			return err;
+		}
+	}
+	if (
+		(err = ioctl(fd, UI_DEV_SETUP, &usetup))
 		|| (err = ioctl(fd, UI_DEV_CREATE))
 	) {
+		printf("failed to create device\n");
 		return err;
 	}
 
 	while (!stop) {
 		sleep(1);
-		emit(fd, EV_KEY, KEY_SPACE, 1);
+		emit(fd, EV_KEY, BTN_NORTH, 1);
 		emit(fd, EV_SYN, SYN_REPORT, 0);
-		emit(fd, EV_KEY, KEY_SPACE, 0);
+		sleep(1);
+		emit(fd, EV_KEY, BTN_NORTH, 0);
 		emit(fd, EV_SYN, SYN_REPORT, 0);
 	}
 
