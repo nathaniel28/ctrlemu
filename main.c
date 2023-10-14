@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -95,27 +96,61 @@ void handle_code(int to_fd, int code, int val) {
 	emit(to_fd, EV_SYN, SYN_REPORT, 0);
 }
 
-int main() {
+int main(int argc, char **argv) {
 	struct sigaction sa;
 	sa.sa_handler = interrupt_handler;
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = 0;
 	if (sigaction(SIGINT, &sa, NULL) == -1) {
-		printf("failed to establish signal handler\n");
+		printf("%s: failed to establish signal handler: %s\n",
+		       argv[0], strerror(errno));
 		return 1;
 	}
 
 	int uinput_fd = open("/dev/uinput", O_WRONLY|O_NONBLOCK);
 	if (uinput_fd == -1) {
-		printf("failed to open /dev/uinput\n");
-		return 1;
+		printf("%s: failed to open /dev/uinput: %s\n",
+		       argv[0], strerror(errno));
+		return errno;
 	}
-	// TODO: find keyboard instead of assuming it's in event3
-	int keyboard_fd = open("/dev/input/event3", O_RDONLY);
-	if (keyboard_fd == -1) {
-		close(uinput_fd);
-		printf("failed to open keyboard\n");
-		return 1;
+
+	int keyboard_fd = STDIN_FILENO;
+	if (argc >= 2) {
+		keyboard_fd = open(argv[1], O_RDONLY);
+		if (keyboard_fd == -1) {
+			close(uinput_fd);
+			printf("%s: failed to open %s: %s\n",
+			       argv[0], argv[1], strerror(errno));
+			return errno;
+		}
+	}
+
+	int err = 0;
+
+	if (
+		(err = ioctl(uinput_fd, UI_SET_EVBIT, EV_KEY))
+		|| (err = ioctl(uinput_fd, UI_SET_EVBIT, EV_ABS))
+	) {
+		printf("%s: failed to set evbits: %s\n",
+		        argv[0], strerror(errno));
+		goto cleanup;
+	}
+
+	for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) {
+		err = ioctl(uinput_fd, UI_SET_KEYBIT, keys[i]);
+		if (err) {
+			printf("%s: failed to set keys: %s\n",
+			       argv[0], strerror(errno));
+			goto cleanup;
+		}
+	}
+	for (size_t i = 0; i < sizeof abss / sizeof *abss; i++) {
+		err = ioctl(uinput_fd, UI_SET_ABSBIT, abss[i]);
+		if (err) {
+			printf("%s: failed to set abss: %s\n",
+			       argv[0], strerror(errno));
+			goto cleanup;
+		}
 	}
 
 	struct uinput_setup usetup;
@@ -125,43 +160,23 @@ int main() {
 	usetup.id.product = PRODUCT;
 	static_assert(sizeof NAME <= sizeof usetup.name);
 	memcpy(&usetup.name, NAME, sizeof NAME);
-
-	int err = 0;
-	if (
-		(err = ioctl(uinput_fd, UI_SET_EVBIT, EV_KEY))
-		|| (err = ioctl(uinput_fd, UI_SET_EVBIT, EV_ABS))
-	) {
-		printf("failed to set evbits\n");
-		return err;
-	}
-	for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) {
-		err = ioctl(uinput_fd, UI_SET_KEYBIT, keys[i]);
-		if (err) {
-			printf("failed to set keys\n");
-			return err;
-		}
-	}
-	for (size_t i = 0; i < sizeof abss / sizeof *abss; i++) {
-		err = ioctl(uinput_fd, UI_SET_ABSBIT, abss[i]);
-		if (err) {
-			printf("failed to set abss\n");
-			return err;
-		}
-	}
 	if (
 		(err = ioctl(uinput_fd, UI_DEV_SETUP, &usetup))
 		|| (err = ioctl(uinput_fd, UI_DEV_CREATE))
 	) {
-		printf("failed to create device\n");
-		return err;
+		printf("%s: failed to create device: %s\n",
+		       argv[0], strerror(errno));
+		goto cleanup;
 	}
 
 	while (!stop) {
 		struct input_event ie[64];
 		ssize_t got = read(keyboard_fd, ie, sizeof ie);
-		if (got < (ssize_t) sizeof(struct input_event)) {
+		const ssize_t want = sizeof(struct input_event);
+		if (got < want) {
 			if (!stop) {
-				printf("expected at least one input event\n");
+				printf("%s: read %ld bytes, expected at least"
+				       "%ld\n", argv[0], got, want);
 				err = 1;
 			}
 			break;
@@ -186,6 +201,7 @@ int main() {
 	printf("\nshutting down\n");
 
 	ioctl(uinput_fd, UI_DEV_DESTROY);
+cleanup:
 	close(uinput_fd);
 	close(keyboard_fd);
 	return err;
