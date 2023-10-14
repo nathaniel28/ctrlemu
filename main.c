@@ -66,16 +66,12 @@ void emit(int fd, int type, int code, int val) {
 	ie.time.tv_sec = 0;
 	ie.time.tv_usec = 0;
 
-	ssize_t total = 0;
-	do {
-		ssize_t put = write(fd, &ie + total, sizeof ie - total);
-		if (put == -1) {
-			printf("failed to write\n");
-			stop = 1;
-			return;
-		}
-		total += put;
-	} while (total < (ssize_t) sizeof ie);
+	ssize_t put = write(fd, &ie, sizeof ie);
+	if (put != sizeof ie) {
+		printf("failed to write\n");
+		stop = 1;
+		return;
+	}
 }
 
 
@@ -89,8 +85,8 @@ int main() {
 		return 1;
 	}
 
-	int fd = open("/dev/uinput", O_WRONLY|O_NONBLOCK);
-	if (fd == -1) {
+	int uinput_fd = open("/dev/uinput", O_WRONLY|O_NONBLOCK);
+	if (uinput_fd == -1) {
 		printf("failed to open /dev/uinput\n");
 		return 1;
 	}
@@ -105,29 +101,29 @@ int main() {
 
 	int err;
 	if (
-		(err = ioctl(fd, UI_SET_EVBIT, EV_KEY))
-		|| (err = ioctl(fd, UI_SET_EVBIT, EV_ABS))
+		(err = ioctl(uinput_fd, UI_SET_EVBIT, EV_KEY))
+		|| (err = ioctl(uinput_fd, UI_SET_EVBIT, EV_ABS))
 	) {
 		printf("failed to set evbits\n");
 		return err;
 	}
 	for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) {
-		err = ioctl(fd, UI_SET_KEYBIT, keys[i]);
+		err = ioctl(uinput_fd, UI_SET_KEYBIT, keys[i]);
 		if (err) {
 			printf("failed to set keys\n");
 			return err;
 		}
 	}
 	for (size_t i = 0; i < sizeof abss / sizeof *abss; i++) {
-		err = ioctl(fd, UI_SET_ABSBIT, abss[i]);
+		err = ioctl(uinput_fd, UI_SET_ABSBIT, abss[i]);
 		if (err) {
 			printf("failed to set abss\n");
 			return err;
 		}
 	}
 	if (
-		(err = ioctl(fd, UI_DEV_SETUP, &usetup))
-		|| (err = ioctl(fd, UI_DEV_CREATE))
+		(err = ioctl(uinput_fd, UI_DEV_SETUP, &usetup))
+		|| (err = ioctl(uinput_fd, UI_DEV_CREATE))
 	) {
 		printf("failed to create device\n");
 		return err;
@@ -135,16 +131,16 @@ int main() {
 
 	while (!stop) {
 		sleep(1);
-		emit(fd, EV_KEY, BTN_NORTH, 1);
-		emit(fd, EV_SYN, SYN_REPORT, 0);
+		emit(uinput_fd, EV_KEY, BTN_NORTH, 1);
+		emit(uinput_fd, EV_SYN, SYN_REPORT, 0);
 		sleep(1);
-		emit(fd, EV_KEY, BTN_NORTH, 0);
-		emit(fd, EV_SYN, SYN_REPORT, 0);
+		emit(uinput_fd, EV_KEY, BTN_NORTH, 0);
+		emit(uinput_fd, EV_SYN, SYN_REPORT, 0);
 	}
 
 	printf("\nshutting down\n");
 
-	ioctl(fd, UI_DEV_DESTROY);
-	close(fd);
+	ioctl(uinput_fd, UI_DEV_DESTROY);
+	close(uinput_fd);
 	return 0;
 }
