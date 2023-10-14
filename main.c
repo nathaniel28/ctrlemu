@@ -65,9 +65,18 @@ void emit(int fd, int type, int code, int val) {
 #define PRODUCT 0x6365
 
 int main() {
+	struct sigaction sa;
+	sa.sa_handler = interrupt_handler;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	if (sigaction(SIGINT, &sa, NULL) == -1) {
+		printf("failed to establish signal handler\n");
+		return 1;
+	}
+
 	int fd = open("/dev/uinput", O_WRONLY|O_NONBLOCK);
 	if (fd == -1) {
-		printf("failed to open uinput\n");
+		printf("failed to open /dev/uinput\n");
 		return 1;
 	}
 
@@ -86,15 +95,6 @@ int main() {
 		|| (err = ioctl(fd, UI_DEV_CREATE))
 	) {
 		return err;
-	}
-
-	struct sigaction sa;
-	sa.sa_handler = interrupt_handler;
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = 0;
-	if (sigaction(SIGINT, &sa, NULL) == -1) {
-		printf("failed to establish signal handler\n");
-		return 1;
 	}
 
 	while (!stop) {
