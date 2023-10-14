@@ -1,39 +1,12 @@
 #include <assert.h>
 #include <fcntl.h>
-#include <stdio.h> // TODO will be unused
-#include <stdlib.h>
+#include <signal.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
-#include <signal.h>
-
-#include <linux/uinput.h>
-
-/*
-
-
-type EV_ABS
-	code ABS_HAT0Y -1 = up
-	code ABS_HAT0Y +1 = down
-	code ABS_HAT0X -1 = left
-	code ABS_HAT0X +1 = right
-type EV_KEY
-	1 = pressed
-	code BTN_NORTH = triangle
-	code BTN_SOUTH = cross
-	code BTN_WEST = square
-	code BTN_EAST = circle
-	code BTN_TL = upper left trigger
-	code BTN_TR = upper right trigger
-	code BTN_SELECT = left switch
-	code BTN_START = right switch
-	code BTN_MODE = center switch
-
-
-*/
-
-// https://www.kernel.org/doc/html/latest/input/input.html
 // https://docs.kernel.org/input/uinput.html
+#include <linux/uinput.h>
 
 const int keys[] = {
 	BTN_NORTH,
@@ -50,7 +23,7 @@ const int abss[] = {
 
 #define NAME "nh-virtual-controller"
 #define VENDOR 0x4E48
-#define PRODUCT 0x6365
+#define PRODUCT 0x7663
 
 static volatile sig_atomic_t stop = 0;
 static void interrupt_handler(int sig) {
@@ -74,6 +47,73 @@ void emit(int fd, int type, int code, int val) {
 	}
 }
 
+void handle_code(int to_fd, int code, int val) {
+	if (val == 2) {
+		// key is being held
+		return;
+	}
+	const int pressed = 32767;
+	int otype, ocode, oval;
+	switch (code) {
+	case KEY_LEFT:
+		otype = EV_ABS;
+		ocode = ABS_HAT0X;
+		oval = -pressed;
+		break;
+	case KEY_RIGHT:
+		otype = EV_ABS;
+		ocode = ABS_HAT0X;
+		oval = +pressed;
+		break;
+	case KEY_UP:
+		otype = EV_ABS;
+		ocode = ABS_HAT0Y;
+		oval = -pressed;
+		break;
+	case KEY_DOWN:
+		otype = EV_ABS;
+		ocode = ABS_HAT0Y;
+		oval = +pressed;
+		break;
+	case KEY_LEFTSHIFT:
+		otype = EV_KEY;
+		ocode = BTN_WEST;
+		oval = 1;
+		break;
+	case KEY_Z:
+		otype = EV_KEY;
+		ocode = BTN_SOUTH;
+		oval = 1;
+		break;
+	case KEY_X:
+		otype = EV_KEY;
+		ocode = BTN_EAST;
+		oval = 1;
+		break;
+	case KEY_LEFTCTRL:
+		otype = EV_KEY;
+		ocode = BTN_NORTH;
+		oval = 1;
+		break;
+	case KEY_SPACE:
+		otype = EV_KEY;
+		ocode = BTN_TR;
+		oval = 1;
+		break;
+	case KEY_ESC:
+		otype = EV_KEY;
+		ocode = BTN_SELECT;
+		oval = 1;
+		break;
+	default:
+		return;
+	}
+	if (val == 0) {
+		oval = 0;
+	}
+	emit(to_fd, otype, ocode, oval);
+	emit(to_fd, EV_SYN, SYN_REPORT, 0);
+}
 
 int main() {
 	struct sigaction sa;
@@ -90,6 +130,13 @@ int main() {
 		printf("failed to open /dev/uinput\n");
 		return 1;
 	}
+	// TODO: find keyboard instead of assuming it's in event3
+	int keyboard_fd = open("/dev/input/event3", O_RDONLY);
+	if (keyboard_fd == -1) {
+		close(uinput_fd);
+		printf("failed to open keyboard\n");
+		return 1;
+	}
 
 	struct uinput_setup usetup;
 	memset(&usetup, 0, sizeof usetup);
@@ -99,7 +146,7 @@ int main() {
 	static_assert(sizeof NAME <= sizeof usetup.name);
 	memcpy(&usetup.name, NAME, sizeof NAME);
 
-	int err;
+	int err = 0;
 	if (
 		(err = ioctl(uinput_fd, UI_SET_EVBIT, EV_KEY))
 		|| (err = ioctl(uinput_fd, UI_SET_EVBIT, EV_ABS))
@@ -130,17 +177,36 @@ int main() {
 	}
 
 	while (!stop) {
-		sleep(1);
-		emit(uinput_fd, EV_KEY, BTN_NORTH, 1);
-		emit(uinput_fd, EV_SYN, SYN_REPORT, 0);
-		sleep(1);
-		emit(uinput_fd, EV_KEY, BTN_NORTH, 0);
-		emit(uinput_fd, EV_SYN, SYN_REPORT, 0);
+		struct input_event ie[64];
+		ssize_t got = read(keyboard_fd, ie, sizeof ie);
+		if (got < (ssize_t) sizeof(struct input_event)) {
+			if (!stop) {
+				printf("expected at least one input event\n");
+				err = 1;
+			}
+			break;
+		}
+		_Bool find_syn_report = 0;
+		for (size_t i = 0; i < got / sizeof *ie; i++) {
+			if (ie[i].type == EV_SYN) {
+				switch (ie[i].code) {
+				case SYN_REPORT:
+					find_syn_report = 0;
+					break;
+				case SYN_DROPPED:
+					find_syn_report = 1;
+					break;
+				}
+			} else if (!find_syn_report && ie[i].type == EV_KEY) {
+				handle_code(uinput_fd, ie[i].code, ie[i].value);
+			}
+		}
 	}
 
 	printf("\nshutting down\n");
 
 	ioctl(uinput_fd, UI_DEV_DESTROY);
 	close(uinput_fd);
-	return 0;
+	close(keyboard_fd);
+	return err;
 }
