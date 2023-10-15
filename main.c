@@ -104,7 +104,7 @@ void handle_code(int to_fd, int code, int val) {
 		return;
 	}
 	if (val == 0) {
-		if (holding[opposite_direction]) {
+		if (otype == EV_ABS && holding[opposite_direction]) {
 			oval = -oval;
 		} else {
 			oval = 0;
