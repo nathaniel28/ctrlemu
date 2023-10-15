@@ -18,4 +18,4 @@ Currently, the mapping of keys to controller buttons/joysticks are hardcoded. In
 
 Requiring superuser privileges is not ideal, but since it needs to read input when you are not focused on the terminal it is running in (because you're probably using it to play a game) it is necessary.
 
-This program will not compile for Windows.
+This program will only compile for Linux on account of using `/dev/uinput`.
