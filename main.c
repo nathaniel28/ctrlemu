@@ -48,25 +48,39 @@ void emit(int fd, int type, int code, int val) {
 	}
 }
 
+#define NORTH 0
+#define SOUTH 1
+#define EAST 2
+#define WEST 3
+_Bool holding[4] = {0, 0, 0, 0};
 void handle_code(int to_fd, int code, int val) {
 	if (val == 2) {
 		// key is being held
 		return;
 	}
-	const int pressed = 32767;
+	int opposite_direction;
+	const int analog_press = 32767;
 	int otype, ocode, oval;
 	switch (code) {
 	case KEY_LEFT:
-		otype = EV_ABS,	ocode = ABS_HAT0X, oval = -pressed;
+		otype = EV_ABS,	ocode = ABS_HAT0X, oval = -analog_press;
+		holding[WEST] = val;
+		opposite_direction = EAST;
 		break;
 	case KEY_RIGHT:
-		otype = EV_ABS, ocode = ABS_HAT0X, oval = +pressed;
+		otype = EV_ABS, ocode = ABS_HAT0X, oval = +analog_press;
+		holding[EAST] = val;
+		opposite_direction = WEST;
 		break;
 	case KEY_UP:
-		otype = EV_ABS, ocode = ABS_HAT0Y, oval = -pressed;
+		otype = EV_ABS, ocode = ABS_HAT0Y, oval = -analog_press;
+		holding[NORTH] = val;
+		opposite_direction = SOUTH;
 		break;
 	case KEY_DOWN:
-		otype = EV_ABS, ocode = ABS_HAT0Y, oval = +pressed;
+		otype = EV_ABS, ocode = ABS_HAT0Y, oval = +analog_press;
+		holding[SOUTH] = val;
+		opposite_direction = NORTH;
 		break;
 	case KEY_LEFTSHIFT:
 		otype = EV_KEY, ocode = BTN_WEST, oval = 1;
@@ -90,7 +104,11 @@ void handle_code(int to_fd, int code, int val) {
 		return;
 	}
 	if (val == 0) {
-		oval = 0;
+		if (holding[opposite_direction]) {
+			oval = -oval;
+		} else {
+			oval = 0;
+		}
 	}
 	emit(to_fd, otype, ocode, oval);
 	emit(to_fd, EV_SYN, SYN_REPORT, 0);
@@ -116,6 +134,9 @@ int main(int argc, char **argv) {
 
 	int keyboard_fd = STDIN_FILENO;
 	if (argc >= 2) {
+		if (argc > 2) {
+			printf("expected one argument; ignoring the rest\n");
+		}
 		keyboard_fd = open(argv[1], O_RDONLY);
 		if (keyboard_fd == -1) {
 			close(uinput_fd);
@@ -123,6 +144,8 @@ int main(int argc, char **argv) {
 			       argv[0], argv[1], strerror(errno));
 			return errno;
 		}
+	} else {
+		printf("reading input from stdin\n");
 	}
 
 	int err = 0;
