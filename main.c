@@ -63,42 +63,42 @@ void handle_code(int to_fd, int code, int val) {
 	int otype, ocode, oval;
 	switch (code) {
 	case KEY_LEFT:
-		otype = EV_ABS,	ocode = ABS_HAT0X, oval = -analog_press;
+		otype = EV_ABS;	ocode = ABS_HAT0X; oval = -analog_press;
 		holding[WEST] = val;
 		opposite_direction = EAST;
 		break;
 	case KEY_RIGHT:
-		otype = EV_ABS, ocode = ABS_HAT0X, oval = +analog_press;
+		otype = EV_ABS; ocode = ABS_HAT0X; oval = +analog_press;
 		holding[EAST] = val;
 		opposite_direction = WEST;
 		break;
 	case KEY_UP:
-		otype = EV_ABS, ocode = ABS_HAT0Y, oval = -analog_press;
+		otype = EV_ABS; ocode = ABS_HAT0Y; oval = -analog_press;
 		holding[NORTH] = val;
 		opposite_direction = SOUTH;
 		break;
 	case KEY_DOWN:
-		otype = EV_ABS, ocode = ABS_HAT0Y, oval = +analog_press;
+		otype = EV_ABS; ocode = ABS_HAT0Y; oval = +analog_press;
 		holding[SOUTH] = val;
 		opposite_direction = NORTH;
 		break;
 	case KEY_LEFTSHIFT:
-		otype = EV_KEY, ocode = BTN_WEST, oval = 1;
+		otype = EV_KEY; ocode = BTN_WEST; oval = 1;
 		break;
 	case KEY_Z:
-		otype = EV_KEY, ocode = BTN_SOUTH, oval = 1;
+		otype = EV_KEY; ocode = BTN_SOUTH; oval = 1;
 		break;
 	case KEY_X:
-		otype = EV_KEY, ocode = BTN_EAST, oval = 1;
+		otype = EV_KEY; ocode = BTN_EAST; oval = 1;
 		break;
 	case KEY_LEFTCTRL:
-		otype = EV_KEY, ocode = BTN_NORTH, oval = 1;
+		otype = EV_KEY; ocode = BTN_NORTH; oval = 1;
 		break;
 	case KEY_SPACE:
-		otype = EV_KEY, ocode = BTN_TR,	oval = 1;
+		otype = EV_KEY; ocode = BTN_TR;	oval = 1;
 		break;
 	case KEY_ESC:
-		otype = EV_KEY, ocode = BTN_SELECT, oval = 1;
+		otype = EV_KEY; ocode = BTN_SELECT; oval = 1;
 		break;
 	default:
 		return;
