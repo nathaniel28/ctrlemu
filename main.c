@@ -9,6 +9,10 @@
 // https://docs.kernel.org/input/uinput.html
 #include <linux/uinput.h>
 
+#include "parser.h"
+
+// keys and abss are key codes that this virtual controller is allowed to emit
+
 const int keys[] = {
 	BTN_NORTH,
 	BTN_SOUTH,
@@ -53,7 +57,7 @@ void emit(int fd, int type, int code, int val) {
 #define EAST 2
 #define WEST 3
 _Bool holding[4] = {0, 0, 0, 0};
-void handle_code(int to_fd, int code, int val) {
+void handle_code(int to_fd, int in_code, int val) {
 	if (val == 2) {
 		// key is being held
 		return;
@@ -61,7 +65,10 @@ void handle_code(int to_fd, int code, int val) {
 	int opposite_direction;
 	const int analog_press = 32767;
 	int otype, ocode, oval;
-	switch (code) {
+	// TODO: let user define joystick controlls in keys.conf
+	// This is impossible currently because some extra checks need to be
+	// done when receiving an un-hold value for an analog output.
+	switch (in_code) {
 	case KEY_LEFT:
 		otype = EV_ABS;	ocode = ABS_HAT0X; oval = -analog_press;
 		holding[WEST] = val;
@@ -82,26 +89,16 @@ void handle_code(int to_fd, int code, int val) {
 		holding[SOUTH] = val;
 		opposite_direction = NORTH;
 		break;
-	case KEY_LEFTSHIFT:
-		otype = EV_KEY; ocode = BTN_WEST; oval = 1;
-		break;
-	case KEY_Z:
-		otype = EV_KEY; ocode = BTN_SOUTH; oval = 1;
-		break;
-	case KEY_X:
-		otype = EV_KEY; ocode = BTN_EAST; oval = 1;
-		break;
-	case KEY_LEFTCTRL:
-		otype = EV_KEY; ocode = BTN_NORTH; oval = 1;
-		break;
-	case KEY_SPACE:
-		otype = EV_KEY; ocode = BTN_TR;	oval = 1;
-		break;
-	case KEY_ESC:
-		otype = EV_KEY; ocode = BTN_SELECT; oval = 1;
-		break;
 	default:
-		return;
+		if (
+			in_code > (int) (sizeof keymap / sizeof *keymap)
+			|| keymap[in_code].code == 0
+		) {
+			return;
+		}
+		otype = keymap[in_code].type;
+		ocode = keymap[in_code].code;
+		oval = keymap[in_code].value;
 	}
 	if (val == 0) {
 		if (otype == EV_ABS && holding[opposite_direction]) {
@@ -125,6 +122,14 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
+	char *key_binds_path = "keys.conf";
+	printf("reading keybinds from %s\n", key_binds_path);
+	int err = parse(key_binds_path);
+	if (err) {
+		printf("failed to parse keybinds\n");
+		return 1;
+	}
+
 	int uinput_fd = open("/dev/uinput", O_WRONLY|O_NONBLOCK);
 	if (uinput_fd == -1) {
 		printf("%s: failed to open /dev/uinput: %s\n",
@@ -133,9 +138,11 @@ int main(int argc, char **argv) {
 	}
 
 	int keyboard_fd = STDIN_FILENO;
+	char *input_file_name = "stdin";
 	if (argc >= 2) {
 		if (argc > 2) {
-			printf("expected one argument; ignoring the rest\n");
+			printf("%s: expected one argument; ignoring the rest\n",
+			       argv[0]);
 		}
 		keyboard_fd = open(argv[1], O_RDONLY);
 		if (keyboard_fd == -1) {
@@ -144,11 +151,9 @@ int main(int argc, char **argv) {
 			       argv[0], argv[1], strerror(errno));
 			return errno;
 		}
-	} else {
-		printf("reading input from stdin\n");
+		input_file_name = argv[1];
 	}
-
-	int err = 0;
+	printf("%s: reading input from %s\n", argv[0], input_file_name);
 
 	if (
 		(err = ioctl(uinput_fd, UI_SET_EVBIT, EV_KEY))

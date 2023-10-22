@@ -1,5 +1,19 @@
 CFLAGS=-g -Wall -Wextra -pedantic
 LIBS=
 
-main: main.c
-	$(CC) $(CFLAGS) $(LIBS) -o ctrlemu main.c
+OBJS=main.o parser.o
+
+main: $(OBJS)
+	$(CC) $(CFLAGS) $(LIBS) $(OBJS) -o ctrlemu
+
+names:
+	python gen.py > names.h
+
+all:
+	make names
+	make depend
+	make main
+
+SRCS=main.c parser.c
+depend Makefile.d:
+	$(CC) -MM $(SRCS) | grep : > Makefile.d
