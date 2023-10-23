@@ -13,19 +13,6 @@
 
 // keys and abss are key codes that this virtual controller is allowed to emit
 
-const int keys[] = {
-	BTN_NORTH,
-	BTN_SOUTH,
-	BTN_EAST,
-	BTN_WEST,
-	BTN_TR,
-};
-
-const int abss[] = {
-	ABS_HAT0X,
-	ABS_HAT0Y,
-};
-
 #define NAME "nh-virtual-controller"
 #define VENDOR 0x4E48
 #define PRODUCT 0x7663
@@ -78,6 +65,11 @@ void handle_code(int to_fd, int in_code, int in_val) {
 }
 
 int main(int argc, char **argv) {
+	if (argc >= 4) {
+		printf("%s: too many arguments provided, ignoring excess\n",
+		       argv[0]);
+	}
+
 	struct sigaction sa;
 	sa.sa_handler = interrupt_handler;
 	sigemptyset(&sa.sa_mask);
@@ -88,14 +80,6 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	char *key_binds_path = "keys.conf";
-	printf("reading keybinds from %s\n", key_binds_path);
-	int err = parse(key_binds_path);
-	if (err) {
-		printf("failed to parse keybinds\n");
-		return 1;
-	}
-
 	int uinput_fd = open("/dev/uinput", O_WRONLY|O_NONBLOCK);
 	if (uinput_fd == -1) {
 		printf("%s: failed to open /dev/uinput: %s\n",
@@ -103,13 +87,21 @@ int main(int argc, char **argv) {
 		return errno;
 	}
 
+	char *key_binds_path = "keys.conf";
+	if (argc >= 3) {
+		key_binds_path = argv[2];
+	}
+	printf("reading keybinds from %s\n", key_binds_path);
+	int err = parse(key_binds_path);
+	if (err) {
+		printf("failed to parse keybinds\n");
+		close(uinput_fd);
+		return 1;
+	}
+
 	int keyboard_fd = STDIN_FILENO;
 	char *input_file_name = "stdin";
 	if (argc >= 2) {
-		if (argc > 2) {
-			printf("%s: expected one argument; ignoring the rest\n",
-			       argv[0]);
-		}
 		keyboard_fd = open(argv[1], O_RDONLY);
 		if (keyboard_fd == -1) {
 			close(uinput_fd);
@@ -119,7 +111,6 @@ int main(int argc, char **argv) {
 		}
 		input_file_name = argv[1];
 	}
-	printf("%s: reading input from %s\n", argv[0], input_file_name);
 
 	if (
 		(err = ioctl(uinput_fd, UI_SET_EVBIT, EV_KEY))
@@ -130,19 +121,26 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
-	for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) {
-		err = ioctl(uinput_fd, UI_SET_KEYBIT, keys[i]);
-		if (err) {
-			printf("%s: failed to set keys: %s\n",
-			       argv[0], strerror(errno));
+	for (size_t i = 0; i < sizeof keymap / sizeof *keymap; i++) {
+		if (keymap[i].code == 0) {
+			continue;
+		}
+		int set;
+		switch (keymap[i].type) {
+		case EV_KEY:
+			set = UI_SET_KEYBIT;
+			break;
+		case EV_ABS:
+			set = UI_SET_ABSBIT;
+			break;
+		default:
+			printf("%s: bad type %d\n", argv[0], keymap[i].type);
 			goto cleanup;
 		}
-	}
-	for (size_t i = 0; i < sizeof abss / sizeof *abss; i++) {
-		err = ioctl(uinput_fd, UI_SET_ABSBIT, abss[i]);
+		err = ioctl(uinput_fd, set, keymap[i].code);
 		if (err) {
-			printf("%s: failed to set abss: %s\n",
-			       argv[0], strerror(errno));
+			printf("%s: failed to set as %d %d: %s\n",
+			       argv[0], set, keymap[i].code, strerror(errno));
 			goto cleanup;
 		}
 	}
@@ -163,6 +161,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
+	printf("%s: reading input from %s\n", argv[0], input_file_name);
 	while (!stop) {
 		struct input_event ie[64];
 		ssize_t got = read(keyboard_fd, ie, sizeof ie);
