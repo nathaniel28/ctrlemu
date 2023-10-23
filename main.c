@@ -6,12 +6,9 @@
 #include <string.h>
 #include <unistd.h>
 
-// https://docs.kernel.org/input/uinput.html
 #include <linux/uinput.h>
 
 #include "parser.h"
-
-// keys and abss are key codes that this virtual controller is allowed to emit
 
 #define NAME "nh-virtual-controller"
 #define VENDOR 0x4E48
