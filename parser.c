@@ -43,7 +43,7 @@ int parse_word(FILE *fp, const char *terms) {
 	buf[pos] = '\0';
 
 	// decode name or number
-	if (buf[0] >= '0' && buf[0] <= '9') {
+	if (buf[0] == '-' || (buf[0] >= '0' && buf[0] <= '9')) {
 		int res;
 		if (sscanf(buf, "%d", &res) == 1) {
 			return res;
@@ -77,6 +77,14 @@ int parse_file(FILE *fp) {
 		if (keymap[key].type == -1) {
 			printf("failed to read type\n");
 			return -1;
+		}
+		if (keymap[key].type == EV_ABS) {
+			// It's analog input, so read what it's opposite to
+			keymap[key].opposite = parse_word(fp, "");
+			if (keymap[key].opposite == -1) {
+				printf("failed to read opposite\n");
+				return -1;
+			}
 		}
 
 		keymap[key].code = parse_word(fp, "");

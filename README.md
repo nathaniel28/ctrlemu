@@ -14,8 +14,6 @@ Alternatively, you can pipe the output of this file into the program. With no ar
 
 ## Limitations
 
-Currently, the mapping of keys to controller joysticks are hardcoded. In the future, they will be read from the same file other buttons are set in. They are not currently able to be modified because they involve some extra code to work.
-
 Requiring superuser privileges is not ideal, but since it needs to read input when you are not focused on the terminal it is running in (because you're probably using it to play a game) it is necessary.
 
 This program will only compile for Linux on account of requiring `<linux/uinput.h>`.

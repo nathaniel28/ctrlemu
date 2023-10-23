@@ -10,6 +10,7 @@ names:
 	python gen.py > names.h
 
 all:
+	rm *.o
 	make names
 	make depend
 	make main

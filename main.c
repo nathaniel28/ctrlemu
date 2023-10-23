@@ -52,62 +52,28 @@ void emit(int fd, int type, int code, int val) {
 	}
 }
 
-#define NORTH 0
-#define SOUTH 1
-#define EAST 2
-#define WEST 3
-_Bool holding[4] = {0, 0, 0, 0};
-void handle_code(int to_fd, int in_code, int val) {
-	if (val == 2) {
+void handle_code(int to_fd, int in_code, int in_val) {
+	if (in_val == 2) {
 		// key is being held
 		return;
 	}
-	int opposite_direction;
-	const int analog_press = 32767;
-	int otype, ocode, oval;
-	// TODO: let user define joystick controlls in keys.conf
-	// This is impossible currently because some extra checks need to be
-	// done when receiving an un-hold value for an analog output.
-	switch (in_code) {
-	case KEY_LEFT:
-		otype = EV_ABS;	ocode = ABS_HAT0X; oval = -analog_press;
-		holding[WEST] = val;
-		opposite_direction = EAST;
-		break;
-	case KEY_RIGHT:
-		otype = EV_ABS; ocode = ABS_HAT0X; oval = +analog_press;
-		holding[EAST] = val;
-		opposite_direction = WEST;
-		break;
-	case KEY_UP:
-		otype = EV_ABS; ocode = ABS_HAT0Y; oval = -analog_press;
-		holding[NORTH] = val;
-		opposite_direction = SOUTH;
-		break;
-	case KEY_DOWN:
-		otype = EV_ABS; ocode = ABS_HAT0Y; oval = +analog_press;
-		holding[SOUTH] = val;
-		opposite_direction = NORTH;
-		break;
-	default:
-		if (
-			in_code > (int) (sizeof keymap / sizeof *keymap)
-			|| keymap[in_code].code == 0
-		) {
-			return;
-		}
-		otype = keymap[in_code].type;
-		ocode = keymap[in_code].code;
-		oval = keymap[in_code].value;
+	const key k = keymap[in_code];
+	if (
+		in_code > (int) (sizeof keymap / sizeof *keymap)
+		|| k.code == 0
+	) {
+		return;
 	}
-	if (val == 0) {
-		if (otype == EV_ABS && holding[opposite_direction]) {
-			oval = -oval;
+	keymap[in_code].holding = in_val;
+	int out_val = k.value;
+	if (in_val == 0) {
+		if (k.type == EV_ABS && keymap[k.opposite].holding) {
+			out_val = keymap[k.opposite].value;
 		} else {
-			oval = 0;
+			out_val = 0;
 		}
 	}
-	emit(to_fd, otype, ocode, oval);
+	emit(to_fd, k.type, k.code, out_val);
 	emit(to_fd, EV_SYN, SYN_REPORT, 0);
 }
 
