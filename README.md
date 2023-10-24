@@ -5,14 +5,17 @@ Ctrlemu turns keyboard input into controller input by writing to a virtual devic
 ## Usage
 
 `./ctrlemu input config`
+
 Where `input` (default stdin) is the keyboard input device (such as `/dev/input/event3`). You can find out which one is your keyboard with `cat /proc/bus/input/devices`. Reading from the keyboard device file may require superuser privileges.
+
 Where `config` (default "keys.conf") is the configuration file. Lines in this file are structured as follows: `input_code ":" output_type [ opposite_code ] output_code output_value`. `opposite_code` is only specified if `output_type` == `EV_ABS`. An example configuration file is provided in `keys.conf`.
 
-Alternatively, you can pipe the output of this file into the program. With no arguments, it will read from stdin.
+Alternatively, you can pipe the output of the input device file into the program. With no arguments, it will read from stdin.
 
 ## Building
 
-`make`.
+`make all`.
+See Makefile for other rules.
 
 ## Limitations
 
